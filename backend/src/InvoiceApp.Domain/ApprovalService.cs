@@ -36,10 +36,35 @@ public class ApprovalService
         var invoice = Find(invoiceId);
         EnsurePending(invoice);
 
-        var rejectionReason = ValidateApprovalLimit(invoice, approver);
+        var rejectionReason = ValidateApproval(invoice, approver);
         if (rejectionReason is not null)
         {
             invoice.DecisionNote = rejectionReason;
+            _repository.Update(invoice);
+            return invoice;
+        }
+
+        invoice.Approvers ??= new List<string>();
+        invoice.Approvers.Add(approver);
+
+        if (invoice.Amount > DirectorApprovalLimit)
+        {
+            if (invoice.Approvers.Count >= 2)
+            {
+                invoice.Status = InvoiceStatus.Approved;
+                invoice.DecidedBy = approver;
+                invoice.DecidedAt = DateTime.UtcNow;
+                invoice.DecisionNote = null;
+            }
+            else
+            {
+                invoice.Status = InvoiceStatus.PendingApproval;
+                invoice.DecidedBy = null;
+                invoice.DecidedAt = null;
+                invoice.DecisionNote = null;
+            }
+
+            _repository.Update(invoice);
             return invoice;
         }
 
@@ -47,12 +72,11 @@ public class ApprovalService
         invoice.DecidedBy = approver;
         invoice.DecidedAt = DateTime.UtcNow;
         invoice.DecisionNote = null;
-        invoice.Approvers.Add(approver);
         _repository.Update(invoice);
         return invoice;
     }
 
-    public string? ValidateApprovalLimit(Invoice invoice, string approver)
+    public string? ValidateApproval(Invoice invoice, string approver)
     {
         if (invoice.Amount <= ManagerApprovalLimit)
         {
@@ -61,20 +85,29 @@ public class ApprovalService
 
         if (invoice.Amount <= DirectorApprovalLimit)
         {
-            if (IsDirector(approver))
-            {
-                return null;
-            }
-
-            return $"Invoice amount {invoice.Amount:C} exceeds the Manager approval limit of {ManagerApprovalLimit:C}. Only a Director may approve up to {DirectorApprovalLimit:C}.";
+            return IsDirector(approver)
+                ? null
+                : $"Invoice amount {invoice.Amount:C} exceeds the Manager approval limit of {ManagerApprovalLimit:C}. Only a Director may approve up to {DirectorApprovalLimit:C}.";
         }
 
-        if (IsDirector(approver))
+        var existingApprovers = invoice.Approvers ?? new List<string>();
+
+        if (existingApprovers.Contains(approver, StringComparer.OrdinalIgnoreCase))
         {
-            return $"Invoice amount {invoice.Amount:C} exceeds the Director approval limit of {DirectorApprovalLimit:C}. A single approver cannot approve amounts above that limit.";
+            return "A user cannot approve the same invoice twice.";
         }
 
-        return $"Invoice amount {invoice.Amount:C} exceeds the Manager approval limit of {ManagerApprovalLimit:C}. Only a Director may approve up to {DirectorApprovalLimit:C}.";
+        if (existingApprovers.Count == 0)
+        {
+            return null;
+        }
+
+        if (!IsDirector(approver))
+        {
+            return $"Invoice amount {invoice.Amount:C} requires two distinct approvers, and the second approver must be a Director.";
+        }
+
+        return null;
     }
 
     public Invoice Reject(string invoiceId, string approver, string reason)

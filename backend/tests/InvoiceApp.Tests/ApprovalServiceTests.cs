@@ -5,8 +5,8 @@ namespace InvoiceApp.Tests;
 
 public class ApprovalServiceTests
 {
-    private static Invoice InvoiceWith(string id, InvoiceStatus status, decimal amount = 100m) =>
-        new() { Id = id, CustomerName = "Test School", Amount = amount, Status = status, Approvers = new List<string>() };
+    private static Invoice InvoiceWith(string id, InvoiceStatus status, decimal amount = 100m, List<string>? approvers = null) =>
+        new() { Id = id, CustomerName = "Test School", Amount = amount, Status = status, Approvers = approvers ?? new List<string>() };
 
     private static ApprovalService ServiceFor(params Invoice[] invoices) =>
         new(new FakeInvoiceRepository(invoices));
@@ -105,6 +105,49 @@ public class ApprovalServiceTests
         Assert.Null(result.DecidedBy);
         Assert.Null(result.DecidedAt);
         Assert.Equal("Invoice amount £500,001.00 exceeds the Director approval limit of £500,000.00. A single approver cannot approve amounts above that limit.", result.DecisionNote);
+    }
+
+    [Fact]
+    public void Approve_RequiresTwoDistinctApprovers_WhenInvoiceExceeds500k()
+    {
+        var invoice = InvoiceWith("INV-1", InvoiceStatus.PendingApproval, 500_001m, new List<string> { "manager.one" });
+        var service = ServiceFor(invoice);
+
+        var result = service.Approve("INV-1", "director.two");
+
+        Assert.Equal(InvoiceStatus.Approved, result.Status);
+        Assert.Equal("director.two", result.DecidedBy);
+        Assert.Equal(2, result.Approvers.Count);
+        Assert.Contains("manager.one", result.Approvers);
+        Assert.Contains("director.two", result.Approvers);
+    }
+
+    [Fact]
+    public void Approve_RejectsDuplicateApprover_WhenInvoiceExceeds500k()
+    {
+        var invoice = InvoiceWith("INV-1", InvoiceStatus.PendingApproval, 500_001m, new List<string> { "manager.one", "director.two" });
+        var service = ServiceFor(invoice);
+
+        var result = service.Approve("INV-1", "director.two");
+
+        Assert.Equal(InvoiceStatus.PendingApproval, result.Status);
+        Assert.Null(result.DecidedBy);
+        Assert.Null(result.DecidedAt);
+        Assert.Equal("A user cannot approve the same invoice twice.", result.DecisionNote);
+    }
+
+    [Fact]
+    public void Approve_RejectsNonDirectorSecondApprover_WhenInvoiceExceeds500k()
+    {
+        var invoice = InvoiceWith("INV-1", InvoiceStatus.PendingApproval, 500_001m, new List<string> { "manager.one" });
+        var service = ServiceFor(invoice);
+
+        var result = service.Approve("INV-1", "manager.two");
+
+        Assert.Equal(InvoiceStatus.PendingApproval, result.Status);
+        Assert.Null(result.DecidedBy);
+        Assert.Null(result.DecidedAt);
+        Assert.Equal("Invoice amount £500,001.00 requires two distinct approvers, and the second approver must be a Director.", result.DecisionNote);
     }
 
     [Fact]
