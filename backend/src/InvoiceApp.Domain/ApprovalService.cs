@@ -1,4 +1,4 @@
-namespace InvoiceApp.Domain;
+'namespace InvoiceApp.Domain;
 
 /// <summary>
 /// Moves an invoice through its lifecycle: Draft -> PendingApproval -> Approved or Rejected.
