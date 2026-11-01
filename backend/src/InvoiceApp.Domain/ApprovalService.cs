@@ -6,6 +6,9 @@ namespace InvoiceApp.Domain;
 /// </summary>
 public class ApprovalService
 {
+    private const decimal ManagerApprovalLimit = 50_000m;
+    private const decimal DirectorApprovalLimit = 500_000m;
+
     private readonly IInvoiceRepository _repository;
 
     public ApprovalService(IInvoiceRepository repository)
@@ -33,11 +36,45 @@ public class ApprovalService
         var invoice = Find(invoiceId);
         EnsurePending(invoice);
 
+        var rejectionReason = ValidateApprovalLimit(invoice, approver);
+        if (rejectionReason is not null)
+        {
+            invoice.DecisionNote = rejectionReason;
+            return invoice;
+        }
+
         invoice.Status = InvoiceStatus.Approved;
         invoice.DecidedBy = approver;
         invoice.DecidedAt = DateTime.UtcNow;
+        invoice.DecisionNote = null;
+        invoice.Approvers.Add(approver);
         _repository.Update(invoice);
         return invoice;
+    }
+
+    public string? ValidateApprovalLimit(Invoice invoice, string approver)
+    {
+        if (invoice.Amount <= ManagerApprovalLimit)
+        {
+            return null;
+        }
+
+        if (invoice.Amount <= DirectorApprovalLimit)
+        {
+            if (IsDirector(approver))
+            {
+                return null;
+            }
+
+            return $"Invoice amount {invoice.Amount:C} exceeds the Manager approval limit of {ManagerApprovalLimit:C}. Only a Director may approve up to {DirectorApprovalLimit:C}.";
+        }
+
+        if (IsDirector(approver))
+        {
+            return $"Invoice amount {invoice.Amount:C} exceeds the Director approval limit of {DirectorApprovalLimit:C}. A single approver cannot approve amounts above that limit.";
+        }
+
+        return $"Invoice amount {invoice.Amount:C} exceeds the Manager approval limit of {ManagerApprovalLimit:C}. Only a Director may approve up to {DirectorApprovalLimit:C}.";
     }
 
     public Invoice Reject(string invoiceId, string approver, string reason)
@@ -57,6 +94,9 @@ public class ApprovalService
         _repository.Update(invoice);
         return invoice;
     }
+
+    private static bool IsDirector(string approver) =>
+        approver.Contains("director", StringComparison.OrdinalIgnoreCase);
 
     private Invoice Find(string invoiceId) =>
         _repository.GetById(invoiceId)
