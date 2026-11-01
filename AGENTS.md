@@ -36,3 +36,16 @@ Invoice approval demo app: ASP.NET Core 8 Web API with a small static web UI.
 
 - Commit real credentials, tokens or customer data.
 - Add business logic to `Program.cs` or controllers.
+
+## Domain Rules (Invoice Approvals)
+- Manager limit: 50,000.
+- Director limit: 500,000.
+- Invoices > 500,000 require TWO distinct approvers. Second approver MUST be a Director.
+- Conflict of Interest: Same user cannot act as both approvers.
+- Rejection: Return string reason. Invoice status must remain unchanged on rejection.
+
+## Agents & Skills
+- @SpecWriter: Uses BMAD format for specs.
+- @DevAgent: Strict C# Domain logic. No state mutation on errors.
+- @QASubAgent: Writes xUnit and Playwright tests.
+- @ReviewAgent: Code reviewer.
