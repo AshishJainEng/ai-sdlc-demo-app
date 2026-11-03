@@ -1,4 +1,6 @@
-'namespace InvoiceApp.Domain;
+using System.Globalization;
+
+namespace InvoiceApp.Domain;
 
 /// <summary>
 /// Moves an invoice through its lifecycle: Draft -> PendingApproval -> Approved or Rejected.
@@ -8,6 +10,7 @@ public class ApprovalService
 {
     private const decimal ManagerApprovalLimit = 50_000m;
     private const decimal DirectorApprovalLimit = 500_000m;
+    private static readonly CultureInfo BritishPounds = CultureInfo.GetCultureInfo("en-GB");
 
     private readonly IInvoiceRepository _repository;
 
@@ -87,7 +90,7 @@ public class ApprovalService
         {
             return IsDirector(approver)
                 ? null
-                : $"Invoice amount {invoice.Amount:C} exceeds the Manager approval limit of {ManagerApprovalLimit:C}. Only a Director may approve up to {DirectorApprovalLimit:C}.";
+                : $"Invoice amount {FormatCurrency(invoice.Amount)} exceeds the Manager approval limit of {FormatCurrency(ManagerApprovalLimit)}. Only a Director may approve up to {FormatCurrency(DirectorApprovalLimit)}.";
         }
 
         var existingApprovers = invoice.Approvers ?? new List<string>();
@@ -99,12 +102,14 @@ public class ApprovalService
 
         if (existingApprovers.Count == 0)
         {
-            return null;
+            return IsDirector(approver)
+                ? $"Invoice amount {FormatCurrency(invoice.Amount)} exceeds the Director approval limit of {FormatCurrency(DirectorApprovalLimit)}. A single approver cannot approve amounts above that limit."
+                : null;
         }
 
         if (!IsDirector(approver))
         {
-            return $"Invoice amount {invoice.Amount:C} requires two distinct approvers, and the second approver must be a Director.";
+            return $"Invoice amount {FormatCurrency(invoice.Amount)} requires two distinct approvers, and the second approver must be a Director.";
         }
 
         return null;
@@ -127,6 +132,8 @@ public class ApprovalService
         _repository.Update(invoice);
         return invoice;
     }
+
+    private static string FormatCurrency(decimal amount) => amount.ToString("C", BritishPounds);
 
     private static bool IsDirector(string approver) =>
         approver.Contains("director", StringComparison.OrdinalIgnoreCase);

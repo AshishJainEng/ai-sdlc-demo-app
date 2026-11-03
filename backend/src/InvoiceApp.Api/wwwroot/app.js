@@ -1,5 +1,5 @@
 (() => {
-  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const money = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
   const $ = (id) => document.getElementById(id);
   let session = JSON.parse(sessionStorage.getItem('session') || 'null');
 
@@ -138,6 +138,11 @@
       }
     });
   }
+
+  const approvalsTabButton = $('tab-approvals');
+  approvalsTabButton.setAttribute('aria-selected', 'true');
+  show('invoices-panel', false);
+  show('approvals-panel', true);
 
   render();
 })();
